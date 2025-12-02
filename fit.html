@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gamified Fitness Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root {
+  --bg-light:#f5f7fa;
+  --bg-dark:#1e1e2f;
+  --card-light:#fff;
+  --card-dark:#2c2c3d;
+  --primary:#6c63ff;
+  --success:#63ff99;
+  --text-light:#333;
+  --text-dark:#eee;
+}
+
+body {
+  font-family: 'Roboto', sans-serif;
+  margin:0; padding:0;
+  background: var(--bg-light);
+  color: var(--text-light);
+  display:flex; flex-direction:column; align-items:center;
+  transition: background 0.5s, color 0.5s;
+}
+body.dark { background: var(--bg-dark); color: var(--text-dark); }
+
+h1 { margin:20px 0; text-align:center; }
+.container {
+  width:95%; max-width:900px;
+  background:var(--card-light);
+  border-radius:20px; padding:20px; margin-bottom:30px;
+  box-shadow:0 10px 25px rgba(0,0,0,0.2);
+  transition: background 0.5s;
+}
+body.dark .container { background: var(--card-dark); }
+
+.form-group { margin-bottom:12px; }
+label { display:block; font-weight:bold; margin-bottom:5px; }
+input, select, button { width:100%; padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid #ccc; font-size:14px; }
+button { background: linear-gradient(135deg, #6c63ff, #3f3cbb); color:#fff; cursor:pointer; border:none; transition: all 0.2s; }
+button:hover { transform: scale(1.05); box-shadow:0 6px 15px rgba(108,99,255,0.4); }
+
+#calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; margin-top:20px; }
+.day { background:#f0f0ff; padding:10px; border-radius:10px; min-height:100px; position:relative; }
+.day h4 { margin:0 0 5px 0; font-size:14px; }
+.activity-item { background: rgba(108,99,255,0.2); padding:3px 6px; margin-bottom:3px; border-radius:6px; font-size:12px; cursor:grab; display:flex; justify-content:space-between; transition: background 0.3s;}
+.activity-item.dragging { opacity:0.5; }
+.activity-item.completed { background: var(--success) !important; color:#006600; }
+.countdown { font-size:10px; font-weight:bold; margin-left:5px; }
+
+.progress-container { display:flex; justify-content:space-around; margin-top:20px; flex-wrap:wrap; }
+.progress-ring { width:140px; height:140px; position:relative; margin:15px; }
+.progress-ring svg { transform: rotate(-90deg); }
+.progress-ring circle { fill:transparent; stroke-width:14; stroke-linecap:round; }
+.progress-ring .bg { stroke: rgba(108,99,255,0.2); }
+.progress-ring .fg { stroke: url(#grad); stroke-dasharray: 2 * 3.1416 * 60; stroke-dashoffset: 2 * 3.1416 * 60; transition: stroke-dashoffset 1s; }
+.progress-ring text { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-weight:bold; font-size:16px; }
+
+.streak { text-align:center; font-weight:bold; margin-top:15px; color:var(--primary); font-size:16px; transition: transform 0.5s; }
+.streak.animated { transform: scale(1.3); }
+
+.badge { padding:5px 10px; background:#ffcc00; border-radius:10px; color:#333; font-weight:bold; margin:5px; animation: pop 0.5s ease forwards; position:fixed; top:20px; right:20px; z-index:100; opacity:0; }
+@keyframes pop { 0%{transform:scale(0);opacity:0}50%{transform:scale(1.3);opacity:1}100%{transform:scale(1);opacity:1} }
+
+.theme-toggle { margin-bottom:20px; }
+</style>
+</head>
+<body>
+
+<h1>Gamified Fitness Dashboard</h1>
+<button class="theme-toggle" onclick="toggleTheme()">Toggle Dark/Light Theme</button>
+
+<div class="container">
+    <div class="form-group">
+        <label for="exerciseType">Exercise Type:</label>
+        <select id="exerciseType">
+            <option value="Running">Running</option>
+            <option value="Walking">Walking</option>
+            <option value="Cycling">Cycling</option>
+            <option value="Yoga">Yoga</option>
+            <option value="Strength">Strength</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="minutes">Minutes:</label>
+        <input type="number" id="minutes" placeholder="e.g., 30">
+    </div>
+    <div class="form-group">
+        <label for="calories">Calories Burned:</label>
+        <input type="number" id="calories" placeholder="e.g., 200">
+    </div>
+    <div class="form-group">
+        <label for="daySelect">Select Day:</label>
+        <select id="daySelect">
+            <option value="Monday">Monday</option>
+            <option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="timeSelect">Set Time:</label>
+        <input type="time" id="timeSelect">
+    </div>
+    <button onclick="addActivity()">Add Activity</button>
+    <div class="streak" id="streak">Current Weekly Streak: 0 days</div>
+</div>
+
+<div class="container">
+    <h3>Weekly Calendar</h3>
+    <div id="calendar">
+        <div class="day" id="Monday"><h4>Monday</h4></div>
+        <div class="day" id="Tuesday"><h4>Tuesday</h4></div>
+        <div class="day" id="Wednesday"><h4>Wednesday</h4></div>
+        <div class="day" id="Thursday"><h4>Thursday</h4></div>
+        <div class="day" id="Friday"><h4>Friday</h4></div>
+        <div class="day" id="Saturday"><h4>Saturday</h4></div>
+        <div class="day" id="Sunday"><h4>Sunday</h4></div>
+    </div>
+</div>
+
+<div class="container">
+    <h3>Progress Dashboard</h3>
+    <div class="progress-container">
+        <div class="progress-ring">
+            <svg width="140" height="140">
+                <defs>
+                    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#6c63ff"/>
+                        <stop offset="100%" stop-color="#3f3cbb"/>
+                    </linearGradient>
+                </defs>
+                <circle class="bg" r="60" cx="70" cy="70"></circle>
+                <circle class="fg" r="60" cx="70" cy="70"></circle>
+            </svg>
+            <text id="minutesProgress">0 min</text>
+        </div>
+        <div class="progress-ring">
+            <svg width="140" height="140">
+                <defs>
+                    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#63ff99"/>
+                        <stop offset="100%" stop-color="#00cc66"/>
+                    </linearGradient>
+                </defs>
+                <circle class="bg" r="60" cx="70" cy="70"></circle>
+                <circle class="fg" r="60" cx="70" cy="70"></circle>
+            </svg>
+            <text id="caloriesProgress">0 cal</text>
+        </div>
+    </div>
+    <canvas id="weeklyChart"></canvas>
+</div>
+
+<script>
+let activities = JSON.parse(localStorage.getItem('weeklyActivities')) || [];
+const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const weeklyGoals = {minutes: 300, calories: 2000};
+
+function toggleTheme(){
+    document.body.classList.toggle('dark');
+}
+
+function addActivity(){
+    const type = document.getElementById('exerciseType').value;
+    const minutes = parseInt(document.getElementById('minutes').value);
+    const calories = parseInt(document.getElementById('calories').value);
+    const day = document.getElementById('daySelect').value;
+    const time = document.getElementById('timeSelect').value;
+    if(!type || isNaN(minutes) || isNaN(calories) || !time) return;
+    const activity = {type, minutes, calories, day, time};
+    activities.push(activity);
+    localStorage.setItem('weeklyActivities', JSON.stringify(activities));
+    displayActivities();
+    updateChart();
+    updateProgress();
+    updateStreak();
+    checkMilestones();
+    scheduleReminder(activity);
+}
+
+function displayActivities(){
+    days.forEach(d=>{
+        const dayDiv=document.getElementById(d);
+        dayDiv.querySelectorAll('.activity-item').forEach(e=>e.remove());
+    });
+    activities.forEach(a=>{
+        const div=document.createElement('div');
+        div.className='activity-item';
+        div.textContent=`${a.type} - ${a.minutes}min / ${a.calories}cal`;
+        if(a.minutes>=30) div.classList.add('completed');
+        const countdown=document.createElement('span');
+        countdown.className='countdown';
+        countdown.id=`countdown-${a.day}-${a.type.replace(/\s/g,'')}`;
+        div.appendChild(countdown);
+        document.getElementById(a.day).appendChild(div);
+        enableDrag(div);
+    });
+}
+
+function enableDrag(item){
+    item.draggable=true;
+    item.addEventListener('dragstart',()=>item.classList.add('dragging'));
+    item.addEventListener('dragend',()=>{
+        item.classList.remove('dragging');
+        const parentDay=item.parentElement.id;
+        const act=activities.find(a=>a.type===item.textContent.split(' - ')[0] && a.minutes==parseInt(item.textContent.split(' - ')[1]));
+        if(act && act.day!==parentDay){ act.day=parentDay; localStorage.setItem('weeklyActivities', JSON.stringify(activities)); updateChart(); updateProgress(); updateStreak();}
+    });
+}
+
+days.forEach(day=>{
+    document.getElementById(day).addEventListener('dragover', e=>{e.preventDefault(); const dragging=document.querySelector('.dragging'); if(dragging) e.target.closest('.day').appendChild(dragging);});
+});
+
+function updateChart(){
+    const ctx=document.getElementById('weeklyChart').getContext('2d');
+    const totals=days.map(d=>activities.filter(a=>a.day===d).reduce((sum,a)=>sum+a.minutes,0));
+    if(window.weekChart) window.weekChart.destroy();
+    window.weekChart=new Chart(ctx,{type:'bar',data:{labels:days,datasets:[{label:'Minutes',data:totals,backgroundColor:'rgba(108,99,255,0.7)'}]},options:{responsive:true,scales:{y:{beginAtZero:true}}}});
+}
+
+function updateProgress(){
+    const totalMinutes=activities.reduce((sum,a)=>sum+a.minutes,0);
+    const totalCalories=activities.reduce((sum,a)=>sum+a.calories,0);
+    const minutesCircle=document.querySelectorAll('.progress-ring .fg')[0];
+    const caloriesCircle=document.querySelectorAll('.progress-ring .fg')[1];
+    const radius=60;
+    const circumference=2*Math.PI*radius;
+    let minPercent=Math.min(totalMinutes/weeklyGoals.minutes,1);
+    let calPercent=Math.min(totalCalories/weeklyGoals.calories,1);
+    minutesCircle.style.strokeDasharray=circumference;
+    caloriesCircle.style.strokeDasharray=circumference;
+    minutesCircle.style.strokeDashoffset=circumference*(1-minPercent);
+    caloriesCircle.style.strokeDashoffset=circumference*(1-calPercent);
+    document.getElementById('minutesProgress').textContent=`${totalMinutes} min`;
+    document.getElementById('caloriesProgress').textContent=`${totalCalories} cal`;
+}
+
+function updateStreak(){
+    const activeDays=days.filter(d=>activities.some(a=>a.day===d && a.minutes>0)).length;
+    const streakEl=document.getElementById('streak');
+    streakEl.textContent=`Current Weekly Streak: ${activeDays} days`;
+    streakEl.classList.add('animated');
+    setTimeout(()=>{ streakEl.classList.remove('animated'); },500);
+}
+
+function checkMilestones(){
+    const totalMinutes=activities.reduce((sum,a)=>sum+a.minutes,0);
+    if(totalMinutes>=150) showBadge("🎉 150 min Milestone Achieved!");
+    if(totalMinutes>=300) showBadge("🏆 300 min Weekly Goal!");
+}
+
+function showBadge(msg){
+    const badge=document.createElement('div');
+    badge.className='badge';
+    badge.textContent=msg;
+    document.body.appendChild(badge);
+    setTimeout(()=>{ badge.remove(); },3000);
+}
+
+function scheduleReminder(activity){
+    if(!("Notification" in window)) return;
+    if(Notification.permission!=="granted") Notification.requestPermission();
+    const now=new Date();
+    const [hours,mins]=activity.time.split(':').map(Number);
+    const actDate=new Date();
+    const dayIndex=days.indexOf(activity.day);
+    const currentDayIndex=now.getDay()===0?6:now.getDay()-1;
+    actDate.setDate(actDate.getDate()+(dayIndex-currentDayIndex));
+    actDate.setHours(hours,mins,0,0);
+    const diff=actDate-now;
+    if(diff>0 && Notification.permission==="granted"){
+        setTimeout(()=>{ new Notification("Fitness Reminder",{body:`Time for ${activity.type}!`});},diff);
+    }
+}
+
+function updateCountdowns(){
+    const now=new Date();
+    activities.forEach(a=>{
+        const countdownEl=document.getElementById(`countdown-${a.day}-${a.type.replace(/\s/g,'')}`);
+        if(!countdownEl) return;
+        const [hours,mins]=a.time.split(':').map(Number);
+        const actDate=new Date();
+        const dayIndex=days.indexOf(a.day);
+        const currentDayIndex=now.getDay()===0?6:now.getDay()-1;
+        actDate.setDate(actDate.getDate()+(dayIndex-currentDayIndex));
+        actDate.setHours(hours,mins,0,0);
+        const diff=actDate-now;
+        if(diff<=0) countdownEl.textContent="Started!";
+        else{
+            const h=Math.floor(diff/3600000); const m=Math.floor((diff%3600000)/60000); const s=Math.floor((diff%60000)/1000);
+            countdownEl.textContent=`${h}h ${m}m ${s}s`;
+        }
+    });
+}
+
+setInterval(updateCountdowns,1000);
+displayActivities();
+updateChart();
+updateProgress();
+updateStreak();
+</script>
+
+</body>
+</html>
